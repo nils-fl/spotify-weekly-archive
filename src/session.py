@@ -43,11 +43,22 @@ def create_session() -> Session:
             "Copy credentials.json from the zotify project (chmod 600)."
         )
 
+    # store_credentials: never rewrite the credentials file -- it may be shared
+    #   with another tool, and this project only ever reads it.
+    # cache_enabled: librespot's cache is for audio, which we never fetch. It
+    #   would otherwise create a cache/ directory in the working directory,
+    #   which also breaks a read-only container filesystem.
+    conf = (
+        Session.Configuration.Builder()
+        .set_store_credentials(False)
+        .set_cache_enabled(False)
+        .build()
+    )
+
     last = None
     for attempt in range(1, _CONNECT_ATTEMPTS + 1):
         try:
-            builder = Session.Builder()
-            builder.conf.store_credentials = False
+            builder = Session.Builder(conf)
             session = builder.stored_file(str(creds)).create()
             print(f"[session] connected on attempt {attempt}", file=sys.stderr, flush=True)
             return session

@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+logs/
+cache/
+assets/
+.git/
+.gitignore
+README.md
+LICENSE
+ecosystem.config.cjs
+
+# Never bake credentials into an image layer.
+.env
+credentials.json
+api-credentials.json

@@ -85,16 +85,34 @@ capability belongs to the library, and nothing here exposes or wraps it.
 
 ## Credentials
 
-**1. librespot session** — a JSON file of the form:
+Two separate logins, for the two halves of the job. They are not
+interchangeable, and you need both.
+
+**1. librespot session** — reads the source playlist. Created by:
+
+```bash
+PYTHONPATH=src .venv/bin/python src/login.py
+```
+
+This opens Spotify's consent page and writes the file `LIBRESPOT_CREDENTIALS`
+points at. There is **no app to register** — it uses Spotify's own desktop
+client id and a fixed callback on `127.0.0.1:5588`, so the only requirements are
+a browser and that port being free while it runs.
+
+The session is not tied to the machine that created it, so log in on your
+desktop and copy the file to wherever the sync actually runs. The resulting
+file looks like:
 
 ```json
 { "username": "...", "credentials": "...", "type": "..." }
 ```
 
-Produced by librespot or tools built on it. This project never writes to it
-(`store_credentials` is disabled), so it is safe to point at an existing file.
+If you already have one from another librespot-based tool, point
+`LIBRESPOT_CREDENTIALS` at it instead and skip `login.py`. This project never
+writes to that file (`store_credentials` is disabled), so sharing it is safe.
 
-**2. Web API OAuth** — created once by `src/auth.py`. Requires a
+**2. Web API OAuth** — writes to the archive playlist. Created once by
+`src/auth.py`. Unlike the above, this one *does* need a
 [dashboard app](https://developer.spotify.com/dashboard) with:
 
 - Redirect URI registered as exactly `http://127.0.0.1:8888/callback`
@@ -113,10 +131,11 @@ uv sync
 
 cp .env.example .env
 # fill in SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET,
-# SOURCE_PLAYLIST_ID, ARCHIVE_PLAYLIST_ID, LIBRESPOT_CREDENTIALS
+# SOURCE_PLAYLIST_ID, ARCHIVE_PLAYLIST_ID
 
-# one-time consent; needs a browser, so run this on a desktop machine
-PYTHONPATH=src .venv/bin/python src/auth.py
+# two one-time logins; both need a browser, so run these on a desktop machine
+PYTHONPATH=src .venv/bin/python src/login.py   # librespot session -> reads
+PYTHONPATH=src .venv/bin/python src/auth.py    # Web API token     -> writes
 
 # sanity checks
 PYTHONPATH=src .venv/bin/python src/read_playlist.py   # lists source track URIs
@@ -163,6 +182,56 @@ pm2 restart spotify-weekly-archive
 pm2 logs spotify-weekly-archive --lines 50
 ```
 
+## Running with Docker
+
+```bash
+docker build -t spotify-weekly-archive .
+```
+
+Do the two logins on a desktop machine first (see **Credentials**) — both need a
+browser, so neither runs usefully inside the container. Then mount the results:
+
+```bash
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v "$PWD/.env:/app/.env:ro" \
+  -v "$PWD/credentials.json:/app/credentials.json:ro" \
+  -v "$PWD/api-credentials.json:/app/api-credentials.json" \
+  -v "$PWD/logs:/app/logs" \
+  spotify-weekly-archive
+```
+
+Three details that matter:
+
+- `api-credentials.json` is mounted **writable**, not `:ro`. Access tokens
+  expire hourly and the refreshed token is written back; mounting it read-only
+  makes the job fail as soon as the first token expires.
+- `credentials.json` is safe read-only — the librespot session file is never
+  written to.
+- `--user` keeps the log and credential files owned by you rather than root.
+
+Environment variables take precedence over `.env`, which is how you point at
+container paths without editing the file:
+
+```bash
+-e LIBRESPOT_CREDENTIALS=/app/credentials.json
+```
+
+Add `--dry-run` at the end of the command to read everything and write nothing.
+To run one of the other entry points:
+
+```bash
+docker run ... --entrypoint python spotify-weekly-archive /app/src/read_playlist.py
+```
+
+The container is a **one-shot job**: it runs, reports, and exits. Schedule it
+from the host rather than looping inside the container — a crontab line, a
+systemd timer, or a container scheduler such as Ofelia:
+
+```cron
+0 9 * * 1  cd /path/to/spotify-weekly-archive && docker run --rm ... spotify-weekly-archive
+```
+
 ## Logs
 
 `logs/runs.jsonl` — one JSON object per run: timestamp, counts, and each added
@@ -173,7 +242,8 @@ track with an `Artist - Title` label. pm2's own output goes to
 
 | Symptom | Likely cause |
 |---|---|
-| `source playlist returned no tracks` | The librespot session was revoked, or the spclient endpoint changed. Re-authenticate librespot and replace the credentials file. |
+| `source playlist returned no tracks` | The librespot session was revoked, or the spclient endpoint changed. Delete the credentials file and re-run `src/login.py`. |
+| `... already exists` from `login.py` | Intentional. It refuses to overwrite a session file, because librespot would otherwise silently reuse the old one and report success. Delete it first. |
 | `session could not be established after 8 attempts` | AP handshake failing. The client already pins `:443` and retries; check outbound access to `ap-gew4.spotify.com`. |
 | `token refresh failed (400)` | Refresh token revoked. Re-run `src/auth.py` and copy `api-credentials.json` across. |
 | Web API returns 403 everywhere | Premium lapsed on the app owner's account, or your account fell off the app's 5-user allowlist. |
