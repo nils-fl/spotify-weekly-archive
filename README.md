@@ -188,6 +188,16 @@ pm2 logs spotify-weekly-archive --lines 50
 docker build -t spotify-weekly-archive .
 ```
 
+Alpine-based, ~72MB, runs as `nobody`. Dependencies are a separate layer from
+the source, so editing `src/` rebuilds in about a second.
+
+If you are building on Apple Silicon for an x86 server, cross-build explicitly —
+otherwise you get an arm64 image that will not start there:
+
+```bash
+docker build --platform linux/amd64 -t spotify-weekly-archive .
+```
+
 Do the two logins on a desktop machine first (see **Credentials**) — both need a
 browser, so neither runs usefully inside the container. Then mount the results:
 
@@ -208,7 +218,9 @@ Three details that matter:
   makes the job fail as soon as the first token expires.
 - `credentials.json` is safe read-only — the librespot session file is never
   written to.
-- `--user` keeps the log and credential files owned by you rather than root.
+- `--user` matches the container's uid to yours. The image defaults to `nobody`,
+  which cannot write to files your host user owns, so omitting this gives
+  `Permission denied` on `logs/` or the token file.
 
 Environment variables take precedence over `.env`, which is how you point at
 container paths without editing the file:
@@ -249,6 +261,8 @@ track with an `Artist - Title` label. pm2's own output goes to
 | Web API returns 403 everywhere | Premium lapsed on the app owner's account, or your account fell off the app's 5-user allowlist. |
 | `403` on track lookups only | Expected. The batch form `GET /v1/tracks?ids=` was removed for Development Mode apps; `track_label()` falls back to the bare URI. |
 | Job never runs after a reboot | `pm2 save` was not run, or pm2's startup service is not enabled. |
+| `Permission denied` writing logs or the token, in Docker | The image runs as `nobody`. Pass `--user "$(id -u):$(id -g)"`. |
+| `exec format error` in Docker | arm64 image on an x86 host. Rebuild with `--platform linux/amd64`. |
 
 ## Notes
 
