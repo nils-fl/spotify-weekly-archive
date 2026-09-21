@@ -39,6 +39,33 @@ change without notice. The job therefore **fails loudly on an empty source**
 rather than reporting "nothing new this week", so a breakage can't quietly cost
 you months of recommendations.
 
+## Scope
+
+This tool moves track identifiers between playlists. It does not touch audio.
+
+**What it does**
+
+- Reads the track URIs of a source playlist
+- Reads the archive playlist, and appends the URIs that aren't already in it
+- Resolves track titles for the run log
+- Writes `logs/runs.jsonl`
+
+**What it does not do**
+
+- Fetch, decrypt, store or convert audio in any form
+- Call librespot's `content_feeder()`, `audio_key()` or `cdn()` — the APIs
+  through which audio would be obtained
+- Contact any Spotify CDN or audio endpoint. The only hosts used are
+  `api.spotify.com`, `accounts.spotify.com`, and the spclient host that serves
+  the playlist metadata
+- Read, modify or delete anything outside the two configured playlists
+- Bundle, transmit or phone home with credentials of any kind
+
+The entire librespot surface in use is three imports — `ApResolver`, `Session`
+and the `Playlist4External` protobuf. `librespot` is a full Spotify client
+library and can do considerably more than this project asks of it; that
+capability belongs to the library, and nothing here exposes or wraps it.
+
 ## Requirements
 
 - Python 3.10 (librespot pins `>=3.10,<3.11`); [uv](https://docs.astral.sh/uv/)
