@@ -1,4 +1,14 @@
-# spotify-weekly-archive
+<p align="center">
+  <img src="assets/logo.svg" width="80" height="80" alt="">
+</p>
+
+<h1 align="center">spotify-weekly-archive</h1>
+
+<p align="center">
+  Keep every Discover Weekly, forever.
+</p>
+
+---
 
 Copies the tracks from a Spotify playlist into a permanent archive playlist on a
 schedule. Built for Discover Weekly, which is replaced every Monday — this keeps
